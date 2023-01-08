@@ -56,7 +56,8 @@ void loop()
   joyRightX = abs(joyRightX) > 1.0 ? joyRightX : 0.0;
   joyRightY = abs(joyRightY) > 1.0 ? joyRightY : 0.0;
 
-  double angleJoyLeft     = atan2(joyLeftY, joyLeftX);
+  double angleJoyLeft = atan2(joyLeftY, joyLeftX);
+
   double magnitudeJoyLeft = sqrt(joyLeftY * joyLeftY + joyLeftX * joyLeftX);
 
   double velocityFrontLeft  = sin(angleJoyLeft + M_PI/4) * magnitudeJoyLeft + joyRightX;
@@ -64,46 +65,73 @@ void loop()
   double velocityFrontRight = sin(angleJoyLeft - M_PI/4) * magnitudeJoyLeft - joyRightX;
   double velocityBackRight  = sin(angleJoyLeft + M_PI/4) * magnitudeJoyLeft - joyRightX;
 
-  // Substract multiples of M_PI/2 so that the simplified angle is just the
-  // remainder less than M_PI/2.
-  double simplifiedAngle = abs(angleJoyLeft) - (uint8_t(abs(angleJoyLeft) / (M_PI/2)) * M_PI/2);
+  double speedFrontLeft  = abs(velocityFrontLeft);
+  double speedBackLeft   = abs(velocityBackLeft);
+  double speedFrontRight = abs(velocityFrontRight);
+  double speedBackRight  = abs(velocityBackRight);
 
-  // The max speed accounts for the fact that we are scaling a square with a
-  // side length of neutral value to a circle with a radius of neutral value.
-  double maxSpeed = neutralValue;
+  // Substract multiples of M_PI so that the simplified angle is just the
+  // remainder less than M_PI.
+  double simplifiedAngle = abs(angleJoyLeft) - (uint8_t(abs(angleJoyLeft) / M_PI) * M_PI);
+
+  // If the simplified angle is greater than M_PI, then subtract M_PI/2 so
+  // that: M_PI/2 <= simplified angle <= 0
+  if (simplifiedAngle > M_PI/2)
+  {
+    simplifiedAngle -= M_PI/2;
+  }
+
+  double maxJoyLeftX = neutralValue;
+  double maxJoyLeftY = neutralValue;
 
   // If the simplified angle is closer to the X axis, then use cos(...).
   // If the simplified angle is closer to the Y axis, then use sin(...).
   // Otherwise, it must be equal to M_PI/4 (aka. 45 deg), so use either.
   if (simplifiedAngle < M_PI/4)
   {
-    maxSpeed = abs(neutralValue / cos(simplifiedAngle));
+    maxJoyLeftX = neutralValue;
+    maxJoyLeftY = maxJoyLeftX * tan(simplifiedAngle);
   }
   else
   {
-    maxSpeed = abs(neutralValue / sin(simplifiedAngle));
+    maxJoyLeftY = neutralValue;
+    maxJoyLeftX = maxJoyLeftY * tan((M_PI/2) - simplifiedAngle);
   }
 
-  // Wheels won't spin unless the speed is at least 100 ish.
-  uint8_t speedFrontLeft  = map(abs(velocityFrontLeft),  0.0, maxSpeed, 100, 255);
-  uint8_t speedBackLeft   = map(abs(velocityBackLeft),   0.0, maxSpeed, 100, 255);
-  uint8_t speedFrontRight = map(abs(velocityFrontRight), 0.0, maxSpeed, 100, 255);
-  uint8_t speedBackRight  = map(abs(velocityBackRight),  0.0, maxSpeed, 100, 255);
+  double maxMagnitudeJoyLeft = sqrt(maxJoyLeftY * maxJoyLeftY + maxJoyLeftX * maxJoyLeftX);
 
-  uint8_t directionFrontLeft  = (velocityFrontLeft  > 1.0) ? FORWARD : (velocityFrontLeft  < -1.0) ? BACKWARD : RELEASE;
-  uint8_t directionBackLeft   = (velocityBackLeft   > 1.0) ? FORWARD : (velocityBackLeft   < -1.0) ? BACKWARD : RELEASE;
-  uint8_t directionFrontRight = (velocityFrontRight > 1.0) ? FORWARD : (velocityFrontRight < -1.0) ? BACKWARD : RELEASE;
-  uint8_t directionBackRight  = (velocityBackRight  > 1.0) ? FORWARD : (velocityBackRight  < -1.0) ? BACKWARD : RELEASE;
+  double maxVelocityFrontLeft  = sin(angleJoyLeft + M_PI/4) * maxMagnitudeJoyLeft + joyRightX;
+  double maxVelocityBackLeft   = sin(angleJoyLeft - M_PI/4) * maxMagnitudeJoyLeft + joyRightX;
+  double maxVelocityFrontRight = sin(angleJoyLeft - M_PI/4) * maxMagnitudeJoyLeft - joyRightX;
+  double maxVelocityBackRight  = sin(angleJoyLeft + M_PI/4) * maxMagnitudeJoyLeft - joyRightX;
 
-  motorFrontLeft.setSpeed(speedFrontLeft);
-  motorBackLeft.setSpeed(speedBackLeft);
-  motorFrontRight.setSpeed(speedFrontRight);
-  motorBackRight.setSpeed(speedBackRight);
+  double maxSpeedFrontLeft  = abs(maxVelocityFrontLeft);
+  double maxSpeedBackLeft   = abs(maxVelocityBackLeft);
+  double maxSpeedFrontRight = abs(maxVelocityFrontRight);
+  double maxSpeedBackRight  = abs(maxVelocityBackRight);
 
-  motorFrontLeft.run(directionFrontLeft);
-  motorBackLeft.run(directionBackLeft);
-  motorFrontRight.run(directionFrontRight);
-  motorBackRight.run(directionBackRight);
+  double maxSpeedOverall = max(max(maxSpeedFrontLeft, maxSpeedBackLeft), max(maxSpeedFrontRight, maxSpeedBackRight));
+
+  // Note: The wheels won't spin unless the speed is at least 100 ish.
+  uint8_t motorSpeedFrontLeft  = velocityFrontLeft  ? map(speedFrontLeft,  0.0, maxSpeedOverall, 0, 255) : 0;
+  uint8_t motorSpeedBackLeft   = velocityBackLeft   ? map(speedBackLeft,   0.0, maxSpeedOverall, 0, 255) : 0;
+  uint8_t motorSpeedFrontRight = velocityFrontRight ? map(speedFrontRight, 0.0, maxSpeedOverall, 0, 255) : 0;
+  uint8_t motorSpeedBackRight  = velocityBackRight  ? map(speedBackRight,  0.0, maxSpeedOverall, 0, 255) : 0;
+
+  uint8_t motorDirectionFrontLeft  = (velocityFrontLeft  > 1.0) ? FORWARD : (velocityFrontLeft  < -1.0) ? BACKWARD : RELEASE;
+  uint8_t motorDirectionBackLeft   = (velocityBackLeft   > 1.0) ? FORWARD : (velocityBackLeft   < -1.0) ? BACKWARD : RELEASE;
+  uint8_t motorDirectionFrontRight = (velocityFrontRight > 1.0) ? FORWARD : (velocityFrontRight < -1.0) ? BACKWARD : RELEASE;
+  uint8_t motorDirectionBackRight  = (velocityBackRight  > 1.0) ? FORWARD : (velocityBackRight  < -1.0) ? BACKWARD : RELEASE;
+
+  motorFrontLeft.setSpeed(motorSpeedFrontLeft);
+  motorBackLeft.setSpeed(motorSpeedBackLeft);
+  motorFrontRight.setSpeed(motorSpeedFrontRight);
+  motorBackRight.setSpeed(motorSpeedBackRight);
+
+  motorFrontLeft.run(motorDirectionFrontLeft);
+  motorBackLeft.run(motorDirectionBackLeft);
+  motorFrontRight.run(motorDirectionFrontRight);
+  motorBackRight.run(motorDirectionBackRight);
 
   delay(100);
 
@@ -112,22 +140,49 @@ void loop()
   // Serial.print("joyRightX = "); Serial.print(joyRightX); Serial.print(", ");
   // Serial.print("joyRightY = "); Serial.print(joyRightY); Serial.println("");
 
+  // Serial.print("angleJoyLeft = "); Serial.print(angleJoyLeft); Serial.println("");
+
+  // Serial.print("magnitudeJoyLeft = "); Serial.print(magnitudeJoyLeft); Serial.println("");
+
   // Serial.print("velocityFrontLeft = ");  Serial.print(velocityFrontLeft);  Serial.print(", ");
   // Serial.print("velocityBackLeft = ");   Serial.print(velocityBackLeft);   Serial.print(", ");
   // Serial.print("velocityFrontRight = "); Serial.print(velocityFrontRight); Serial.print(", ");
   // Serial.print("velocityBackRight = ");  Serial.print(velocityBackRight);  Serial.println("");
 
-  // Serial.print("speedFrontLeft = ");  Serial.print(speedFrontLeft);  Serial.print(", ");
-  // Serial.print("speedBackLeft = ");   Serial.print(speedBackLeft);   Serial.print(", ");
-  // Serial.print("speedFrontRight = "); Serial.print(speedFrontRight); Serial.print(", ");
-  // Serial.print("speedBackRight = ");  Serial.print(speedBackRight);  Serial.println("");
+  // Serial.print("maxJoyLeftX = "); Serial.print(maxJoyLeftX); Serial.print(", ");
+  // Serial.print("maxJoyLeftY = "); Serial.print(maxJoyLeftY); Serial.println("");
 
-  // Serial.print("angleJoyLeft = ");     Serial.print(angleJoyLeft);     Serial.println("");
-  // Serial.print("magnitudeJoyLeft = "); Serial.print(magnitudeJoyLeft); Serial.println("");
-  // Serial.print("maxSpeed = ");         Serial.print(maxSpeed);         Serial.println("");
+  // Serial.print("maxMagnitudeJoyLeft = "); Serial.print(maxMagnitudeJoyLeft); Serial.println("");
 
-  // Serial.print("directionFrontLeft = ");  Serial.print(directionFrontLeft);  Serial.print(", ");
-  // Serial.print("directionBackLeft = ");   Serial.print(directionBackLeft);   Serial.print(", ");
-  // Serial.print("directionFrontRight = "); Serial.print(directionFrontRight); Serial.print(", ");
-  // Serial.print("directionBackRight = ");  Serial.print(directionBackRight);  Serial.println("");
+  // Serial.print("maxVelocityFrontLeft = ");  Serial.print(maxVelocityFrontLeft);  Serial.print(", ");
+  // Serial.print("maxVelocityBackLeft = ");   Serial.print(maxVelocityBackLeft);   Serial.print(", ");
+  // Serial.print("maxVelocityFrontRight = "); Serial.print(maxVelocityFrontRight); Serial.print(", ");
+  // Serial.print("maxVelocityBackRight = ");  Serial.print(maxVelocityBackRight);  Serial.println("");
+
+  // Serial.print("maxSpeedOverall = "); Serial.print(maxSpeedOverall); Serial.println("");
+
+  // Serial.print("motorSpeedFrontLeft = ");  Serial.print(motorSpeedFrontLeft);  Serial.print(", ");
+  // Serial.print("motorSpeedBackLeft = ");   Serial.print(motorSpeedBackLeft);   Serial.print(", ");
+  // Serial.print("motorSpeedFrontRight = "); Serial.print(motorSpeedFrontRight); Serial.print(", ");
+  // Serial.print("motorSpeedBackRight = ");  Serial.print(motorSpeedBackRight);  Serial.println("");
+
+  // auto motorDirectionToString = [](int motorDirection) -> String
+  // {
+  //   switch (motorDirection)
+  //   {
+  //     case FORWARD:  return "FORWARD";
+  //     case BACKWARD: return "BACKWARD";
+  //     case RELEASE:  return "RELEASE";
+  //     default:       return String(motorDirection);
+  //   }
+  // };
+
+  // Serial.print("motorDirectionFrontLeft = ");  Serial.print(motorDirectionToString(motorDirectionFrontLeft));  Serial.print(", ");
+  // Serial.print("motorDirectionBackLeft = ");   Serial.print(motorDirectionToString(motorDirectionBackLeft));   Serial.print(", ");
+  // Serial.print("motorDirectionFrontRight = "); Serial.print(motorDirectionToString(motorDirectionFrontRight)); Serial.print(", ");
+  // Serial.print("motorDirectionBackRight = ");  Serial.print(motorDirectionToString(motorDirectionBackRight));  Serial.println("");
+
+  // Serial.println(); Serial.println();
+
+  // delay(2000);
 }
